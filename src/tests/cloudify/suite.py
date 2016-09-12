@@ -89,6 +89,7 @@ class ParserTestCase(TestCase):
             resources_base_url=resources_base_url,
             validate_version=validate_version)
         self._validate_parse_no_issues(context)
+
         return context.deployment.classic_plan
 
     def parse_from_uri(self, uri):
@@ -99,9 +100,10 @@ class ParserTestCase(TestCase):
     def _validate_parse_no_issues(self, context):
         if not context.validation.has_issues:
             return
-        self.fail(
-            'parse failed with issues: \n\t{0}'.format('\n\t'.join(
-                issue.message for issue in context.validation.issues)))
+        msg = 'parse failed with issues: \n\t{0}'.format('\n\t'.join(
+            issue.message for issue in context.validation.issues))
+        raise CloudifyDSLError(msg)
+
 
 
 class Template(object):
@@ -269,6 +271,9 @@ class Template(object):
             '    value: test_output_value\n'
         )
 
+
+class CloudifyDSLError(Exception):
+    pass
 
 def op_struct(
         plugin_name,

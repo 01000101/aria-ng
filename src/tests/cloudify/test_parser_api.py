@@ -17,9 +17,10 @@
 import os
 from urllib import pathname2url
 
-from ruamel.yaml import safe_dump, safe_load
+from ruamel.yaml import safe_dump
 
 from aria.reading.exceptions import ReaderNotFoundError
+
 
 from dsl_parser.exceptions import (DSLParsingLogicException,
                                    DSLParsingException)
@@ -27,13 +28,14 @@ from dsl_parser.exceptions import (DSLParsingLogicException,
 from .suite import (
     ParserTestCase,
     TempDirectoryTestCase,
+    CloudifyDSLError,
     op_struct,
     get_nodes_by_names,
     get_node_by_name,
     parse_from_path,
 )
 
-AGENT = 'central_deployment_agent'
+CENTRAL_DEPLOYMENT_AGENT = 'central_deployment_agent'
 TYPE_HIERARCHY = 'type_hierarchy'
 
 PLUGIN_EXECUTOR_KEY = 'executor'
@@ -54,7 +56,7 @@ SCRIPT_PLUGIN_RUN_TASK = 'script_runner.tasks.run'
 
 NO_OP = {
     'implementation': '',
-    'inputs': None,
+    'inputs': {},
     'executor': None,
     'max_retries': None,
     'retry_interval': None,
@@ -90,16 +92,16 @@ class _AssertionsMixin(object):
         self.assertEquals('test_plugin', plugin[PLUGIN_NAME_KEY])
 
         self.assertEquals(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['install'])
         self.assertEquals(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface1.install'])
         self.assertEquals(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['terminate'])
         self.assertEquals(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface1.terminate'])
 
 
@@ -122,7 +124,7 @@ class TestParserApi(ParserTestCase, _AssertionsMixin):
         self.assertEqual(issue.level, 0)
         self.assertEqual(
             issue.message,
-            'aria.reading.exceptions.ReaderNotFoundError was raised')
+            'location: http://www.google.com/bad-dsl')
 
     # todo: move this tests to plugin tests?
     def test_type_with_single_explicit_interface_and_plugin(self):
@@ -187,7 +189,7 @@ node_types:
             PLUGIN_NAME_KEY: 'test_plugin',
             PLUGIN_SOURCE_KEY: 'dummy',
             PLUGIN_INSTALL_KEY: True,
-            PLUGIN_EXECUTOR_KEY: AGENT,
+            PLUGIN_EXECUTOR_KEY: CENTRAL_DEPLOYMENT_AGENT,
             PLUGIN_INSTALL_ARGUMENTS_KEY: None,
             PLUGIN_PACKAGE_NAME: None,
             PLUGIN_PACKAGE_VERSION: None,
@@ -211,7 +213,7 @@ node_types:
             PLUGIN_NAME_KEY: 'test_plugin',
             PLUGIN_SOURCE_KEY: 'dummy',
             PLUGIN_INSTALL_KEY: True,
-            PLUGIN_EXECUTOR_KEY: AGENT,
+            PLUGIN_EXECUTOR_KEY: CENTRAL_DEPLOYMENT_AGENT,
             PLUGIN_INSTALL_ARGUMENTS_KEY: '-r requirements.txt',
             PLUGIN_PACKAGE_NAME: None,
             PLUGIN_PACKAGE_VERSION: None,
@@ -548,7 +550,7 @@ relationships:
             test_relationship['target_interfaces']['test_interface4']
         self.assertEquals(
             {'implementation': 'test_plugin.task_name',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -722,17 +724,17 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['test_interface1']['install'])
 
         relationship_source_operations = relationship['source_operations']
         self.assertEqual(
-            op_struct('test_plugin', 'install'),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             relationship_source_operations['install'])
         self.assertEqual(
-            op_struct('test_plugin', 'install'),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             relationship_source_operations['test_interface1.install'])
         self.assertEqual(2, len(relationship_source_operations))
         self.assertEquals(8, len(relationship))
@@ -813,33 +815,33 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.task_name1',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['interface1']['op1'])
         self.assertEqual(
             {'implementation': 'test_plugin.task_name2',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['target_interfaces']['interface2']['op2'])
 
         rel_source_ops = relationship['source_operations']
         self.assertEqual(
-            op_struct('test_plugin', 'task_name1', executor=AGENT),
+            op_struct('test_plugin', 'task_name1', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['op1'])
         self.assertEqual(
-            op_struct('test_plugin', 'task_name1', executor=AGENT),
+            op_struct('test_plugin', 'task_name1', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['interface1.op1'])
         self.assertEquals(2, len(rel_source_ops))
 
         rel_target_ops = relationship['target_operations']
         self.assertEqual(
-            op_struct('test_plugin', 'task_name2'),
+            op_struct('test_plugin', 'task_name2', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['op2'])
         self.assertEqual(
-            op_struct('test_plugin', 'task_name2'),
+            op_struct('test_plugin', 'task_name2', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['interface2.op2'])
         self.assertEquals(2, len(rel_target_ops))
         self.assertEquals(8, len(relationship))
@@ -936,7 +938,7 @@ plugins:
         self.assertEquals(
             {'implementation': '',
              'inputs': {},
-             'executor': AGENT,
+             'executor': None,
              'max_retries': None,
              'retry_interval': None},
             parent_relationship['target_interfaces']['test_interface3']['install'])
@@ -954,14 +956,14 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['test_interface2']['install'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['test_interface2']['terminate'])
@@ -978,7 +980,7 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['target_interfaces']['test_interface1']['install'])
@@ -988,7 +990,7 @@ plugins:
         self.assertEquals(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['source_interfaces']['test_interface2']['install'])
@@ -997,14 +999,14 @@ plugins:
         self.assertEquals(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['source_interfaces']['test_interface2']['install'])
         self.assertEquals(
             {'implementation': 'test_plugin.terminate',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['source_interfaces']['test_interface2']['terminate'])
@@ -1012,25 +1014,25 @@ plugins:
         rel_source_ops = node_relationship['source_operations']
         self.assertEquals(4, len(rel_source_ops))
         self.assertEqual(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['test_interface2.install'])
         self.assertEqual(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['test_interface3.install'])
         self.assertEqual(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['terminate'])
         self.assertEqual(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['test_interface2.terminate'])
 
         rel_target_ops = node_relationship['target_operations']
         self.assertEquals(2, len(rel_target_ops))
         self.assertEqual(
-            op_struct('', '', {}, executor=AGENT),
+            op_struct(None, None, {}),
             rel_target_ops['test_interface3.install'])
         self.assertEqual(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['test_interface1.install'])
 
     def test_relationship_interfaces_inheritance_merge(self):
@@ -1114,14 +1116,14 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['target_interfaces']['test_interface']['install'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['target_interfaces']['test_interface']['terminate'])
@@ -1131,14 +1133,14 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['test_interface']['install2'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['test_interface']['terminate2'])
@@ -1151,21 +1153,21 @@ plugins:
         self.assertEqual(
             {'implementation': 'test_plugin.install',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['target_interfaces']['test_interface']['install'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['target_interfaces']['test_interface']['terminate'])
         self.assertEqual(
             {'implementation': 'test_plugin.destroy1',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['target_interfaces']['test_interface']['destroy'])
@@ -1175,64 +1177,64 @@ plugins:
         self.assertEquals(
             {'implementation': 'test_plugin.install2',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['source_interfaces']['test_interface']['install2'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             relationship['source_interfaces']['test_interface']['terminate2'])
         self.assertEquals(
             {'implementation': 'test_plugin.destroy2',
              'inputs': {},
-             'executor': AGENT,
+             'executor': CENTRAL_DEPLOYMENT_AGENT,
              'max_retries': None,
              'retry_interval': None},
             node_relationship['source_interfaces']['test_interface']['destroy2'])
 
         rel_source_ops = node_relationship['source_operations']
         self.assertEqual(
-            op_struct('test_plugin', 'install2', executor=AGENT),
+            op_struct('test_plugin', 'install2', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['install2'])
         self.assertEqual(
-            op_struct('test_plugin', 'install2', executor=AGENT),
+            op_struct('test_plugin', 'install2', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['test_interface.install2'])
         self.assertEqual(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['terminate2'])
         self.assertEqual(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['test_interface.terminate2'])
         self.assertEqual(
-            op_struct('test_plugin', 'destroy2', executor=AGENT),
+            op_struct('test_plugin', 'destroy2', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['destroy2'])
         self.assertEqual(
-            op_struct('test_plugin', 'destroy2', executor=AGENT),
+            op_struct('test_plugin', 'destroy2', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_source_ops['test_interface.destroy2'])
         self.assertEquals(6, len(rel_source_ops))
 
         rel_target_ops = node_relationship['target_operations']
         self.assertEqual(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['install'])
         self.assertEqual(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['test_interface.install'])
         self.assertEqual(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['terminate'])
         self.assertEqual(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['test_interface.terminate'])
         self.assertEqual(
-            op_struct('test_plugin', 'destroy1', executor=AGENT),
+            op_struct('test_plugin', 'destroy1', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['destroy'])
         self.assertEqual(
-            op_struct('test_plugin', 'destroy1', executor=AGENT),
+            op_struct('test_plugin', 'destroy1', executor=CENTRAL_DEPLOYMENT_AGENT),
             rel_target_ops['test_interface.destroy'])
         self.assertEquals(6, len(rel_source_ops))
 
@@ -2427,18 +2429,18 @@ groups:
 
 class TestParserApiWithFileSystem(ParserTestCase, TempDirectoryTestCase, _AssertionsMixin):
     def test_import_from_path(self):
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template.node_type_section()
         self.template.node_template_section()
         template_as_import = self.create_yaml_with_imports([str(self.template)])
         self.template.clear()
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template.template += template_as_import
         result = self.parse()
         self.assert_minimal_blueprint(result)
 
     def test_dsl_with_type_with_operation_mappings(self):
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template += self.create_yaml_with_imports([
             self.template.BASIC_NODE_TEMPLATES_SECTION,
             self.template.BASIC_PLUGIN,
@@ -2475,16 +2477,16 @@ plugins:
 
         self.assert_blueprint(result)
         self.assertEquals(
-            op_struct('other_test_plugin', 'start', executor=AGENT),
+            op_struct('other_test_plugin', 'start', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['start'])
         self.assertEquals(
-            op_struct('other_test_plugin', 'start', executor=AGENT),
+            op_struct('other_test_plugin', 'start', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.start'])
         self.assertEquals(
-            op_struct('other_test_plugin', 'shutdown', executor=AGENT),
+            op_struct('other_test_plugin', 'shutdown', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['shutdown'])
         self.assertEquals(
-            op_struct('other_test_plugin', 'shutdown', executor=AGENT),
+            op_struct('other_test_plugin', 'shutdown', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.shutdown'])
 
     def test_recursive_imports(self):
@@ -2526,7 +2528,7 @@ plugins:
         self.assert_blueprint(result)
 
     def test_type_interface_derivation(self):
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template += self.create_yaml_with_imports([
             self.template.BASIC_NODE_TEMPLATES_SECTION,
             self.template.BASIC_PLUGIN,
@@ -2600,34 +2602,34 @@ plugins:
         operations = node['operations']
 
         self.assertEquals(
-            op_struct('test_plugin2', 'start', executor=AGENT),
+            op_struct('test_plugin2', 'start', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['start'])
         self.assertEquals(
-            op_struct('test_plugin2', 'start', executor=AGENT),
+            op_struct('test_plugin2', 'start', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.start'])
         self.assertEquals(
-            op_struct('test_plugin2', 'stop', executor=AGENT),
+            op_struct('test_plugin2', 'stop', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['stop'])
         self.assertEquals(
-            op_struct('test_plugin2', 'stop', executor=AGENT),
+            op_struct('test_plugin2', 'stop', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.stop'])
         self.assertEquals(
-            op_struct('test_plugin3', 'op', executor=AGENT),
+            op_struct('test_plugin3', 'op', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['op1'])
         self.assertEquals(
-            op_struct('test_plugin3', 'op', executor=AGENT),
+            op_struct('test_plugin3', 'op', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface3.op1'])
         self.assertEquals(
-            op_struct('test_plugin4', 'op2', executor=AGENT),
+            op_struct('test_plugin4', 'op2', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['op2'])
         self.assertEquals(
-            op_struct('test_plugin4', 'op2', executor=AGENT),
+            op_struct('test_plugin4', 'op2', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface4.op2'])
         self.assertEquals(12, len(operations))
         self.assertEquals(4, len(node['plugins']))
 
     def test_type_interface_recursive_derivation(self):
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template += self.create_yaml_with_imports([
             self.template.BASIC_NODE_TEMPLATES_SECTION,
             self.template.BASIC_PLUGIN])
@@ -2677,21 +2679,21 @@ plugins:
         operations = node['operations']
         self.assertEquals(8, len(operations))
         self.assertEquals(
-            op_struct('test_plugin2', 'start', executor=AGENT),
+            op_struct('test_plugin2', 'start', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['start'])
         self.assertEquals(
-            op_struct('test_plugin2', 'start', executor=AGENT),
+            op_struct('test_plugin2', 'start', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.start'])
         self.assertEquals(
-            op_struct('test_plugin2', 'stop', executor=AGENT),
+            op_struct('test_plugin2', 'stop', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['stop'])
         self.assertEquals(
-            op_struct('test_plugin2', 'stop', executor=AGENT),
+            op_struct('test_plugin2', 'stop', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.stop'])
         self.assertEquals(2, len(node['plugins']))
 
     def test_two_explicit_interfaces_with_same_operation_name(self):
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template += self.create_yaml_with_imports([
             self.template.BASIC_NODE_TEMPLATES_SECTION,
             self.template.BASIC_PLUGIN])
@@ -2725,23 +2727,23 @@ plugins:
         self.assertEquals('test_type', node['type'])
         operations = node['operations']
         self.assertEquals(
-            op_struct('test_plugin', 'install', executor=AGENT),
+            op_struct('test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface1.install'])
         self.assertEquals(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface1.terminate'])
         self.assertEquals(
-            op_struct('other_test_plugin', 'install', executor=AGENT),
+            op_struct('other_test_plugin', 'install', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.install'])
         self.assertEquals(
-            op_struct('other_test_plugin', 'shutdown', executor=AGENT),
+            op_struct('other_test_plugin', 'shutdown', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['test_interface2.shutdown'])
 
         self.assertEquals(
-            op_struct('test_plugin', 'terminate', executor=AGENT),
+            op_struct('test_plugin', 'terminate', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['terminate'])
         self.assertEquals(
-            op_struct('other_test_plugin', 'shutdown', executor=AGENT),
+            op_struct('other_test_plugin', 'shutdown', executor=CENTRAL_DEPLOYMENT_AGENT),
             operations['shutdown'])
         self.assertEquals(6, len(operations))
 
@@ -2766,7 +2768,7 @@ imports:
         self.template.node_template_section()
         data = self.create_yaml_with_imports([str(self.template)], True)
         self.template.clear()
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template += data
         result = self.parse()
         self.assert_minimal_blueprint(result)
@@ -2831,7 +2833,7 @@ imports:
     - """ + mid_file_name
 
         self.template.clear()
-        self.template.version_section('cloudify_dsl', '1.0')
+        self.template.version_section('cloudify_dsl', '1.3')
         self.template += top_level_yaml
         result = self.parse()
         self.assert_blueprint(result)
@@ -2846,7 +2848,7 @@ imports:
         self.assertEquals('test_relationship', test_relationship['name'])
         self.assertEqual(
             {'implementation': 'test_plugin.install',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -2855,7 +2857,7 @@ imports:
                 'source_interfaces']['test_interface2']['install'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -2871,7 +2873,7 @@ imports:
                           test_relationship2['name'])
         self.assertEqual(
             {'implementation': 'test_plugin.install',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -2880,7 +2882,7 @@ imports:
                 'target_interfaces']['test_interface2']['install'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -2895,7 +2897,7 @@ imports:
         self.assertEquals('test_relationship3', test_relationship3['name'])
         self.assertEqual(
             {'implementation': 'test_plugin.install',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -2904,7 +2906,7 @@ imports:
                 'target_interfaces']['test_interface2']['install'])
         self.assertEqual(
             {'implementation': 'test_plugin.terminate',
-             'input': {},
+             'inputs': {},
              'executor': 'central_deployment_agent',
              'max_retries': None,
              'retry_interval': None,
@@ -2972,7 +2974,7 @@ imports:
     type: test_type2
 """
         self.template.template = (
-            self.template.version_section('cloudify_dsl', '1.0', raw=True)
+            self.template.version_section('cloudify_dsl', '1.3', raw=True)
             + self.create_yaml_with_imports([str(self.template)])
         )
         self.template += """
@@ -2990,7 +2992,7 @@ node_types:
         self.assertEquals('test_type2', node2['type'])
 
     def test_merge_plugins_and_interfaces_imports(self):
-        template = self.template.version_section('cloudify_dsl', '1.0', raw=True)
+        template = self.template.version_section('cloudify_dsl', '1.3', raw=True)
         self.template.template = self.create_yaml_with_imports([
             self.template.BASIC_NODE_TEMPLATES_SECTION,
             self.template.BASIC_PLUGIN])
@@ -3097,7 +3099,6 @@ node_templates:
         }, node2['properties'])
 
     def test_validate_version_false_different_versions_in_imports(self):
-        self.template.version_section('cloudify_dsl', '1.0')
         self.template += self.create_yaml_with_imports([
             self.template.version_section('cloudify_dsl', '1.0', raw=True),
             self.template.version_section('cloudify_dsl', '1.1', raw=True),
@@ -3111,7 +3112,7 @@ node_templates:
   node:
     type: type
 """
-        self.assertRaises(DSLParsingException, self.parse, validate_version=True)
+        self.assertRaises(DSLParsingException, self.parse)
         self.parse(validate_version=False)
 
     def test_workflow_imports(self):
@@ -3130,7 +3131,7 @@ plugins:
 workflows:
   workflow2: test_plugin2.workflow2
 """
-        template = self.template.version_section('cloudify_dsl', '1.0', raw=True)
+        template = self.template.version_section('cloudify_dsl', '1.3', raw=True)
         self.template.template = template + self.create_yaml_with_imports([
             str(self.template), workflows1, workflows2])
         result = self.parse()
@@ -3217,11 +3218,13 @@ node_templates:
             inputs = {'script_path': 'stub.py'}
             if extra_properties:
                 inputs.update({'key': 'value'})
-            self.assertEqual(op, op_struct(
-                plugin_name=SCRIPT_PLUGIN_NAME,
-                mapping=SCRIPT_PLUGIN_RUN_TASK,
-                inputs=inputs,
-                executor='central_deployment_agent'))
+            self.assertEqual(
+                op_struct(
+                    plugin_name=SCRIPT_PLUGIN_NAME,
+                    mapping=SCRIPT_PLUGIN_RUN_TASK,
+                    inputs=inputs,
+                    executor='central_deployment_agent'),
+                op)
 
         assert_operation(operation)
         assert_operation(operation2, extra_properties=True)
@@ -3291,9 +3294,10 @@ imports:
         self.template.clear()
         self.template.version_section('cloudify_dsl', '1.2')
         self._create_importable_yaml_for_version_1_3_and_above(importable)
-        ex = self.assertRaises(DSLParsingLogicException, self.parse)
+
+        ex = self.assertRaises(CloudifyDSLError, self.parse)
         self.assertIn(
-            "Import failed: non-mergeable field: '{0}'".format(import_type),
+            'parse failed with issues: \n\timport has forbidden "{0}" section'.format(import_type),
             str(ex))
 
     def _verify_1_3_and_above_mergeable_imports(self, importable):
@@ -3301,7 +3305,7 @@ imports:
         self.template.version_section('cloudify_dsl', '1.3')
         self._create_importable_yaml_for_version_1_3_and_above(importable)
         result = self.parse()
-        self._assert_blueprint(result)
+        self.assert_blueprint(result)
 
     def test_policy_type_imports(self):
         policy_types = [
@@ -3323,7 +3327,7 @@ imports:
                                 default='default_value',
                                 description='property description')))}))
 
-        template = self.template.version_section('cloudify_dsl', '1.0', raw=True)
+        template = self.template.version_section('cloudify_dsl', '1.3', raw=True)
         self.template.node_type_section()
         self.template.plugin_section()
         self.template.node_template_section()
@@ -3354,7 +3358,7 @@ imports:
                                 default='default_value',
                                 description='property description',
                                 type='string')))}))
-        template = self.template.version_section('cloudify_dsl', '1.0', raw=True)
+        template = self.template.version_section('cloudify_dsl', '1.3', raw=True)
         self.template.node_type_section()
         self.template.plugin_section()
         self.template.node_template_section()
